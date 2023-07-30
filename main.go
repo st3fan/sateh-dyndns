@@ -184,6 +184,9 @@ func (app *application) handleUpdate(w http.ResponseWriter, r *http.Request) {
 	app.lastUpdatedAddress = address
 }
 
+func (app *application) handleHealth(w http.ResponseWriter, r *http.Request) {
+}
+
 func (app *application) run() error {
 	return app.server.ListenAndServe()
 }
@@ -201,6 +204,7 @@ func newApplication(cfg configuration) (*application, error) {
 
 	app.router = mux.NewRouter()
 	app.router.HandleFunc("/update", app.handleUpdate).Methods("POST")
+	app.router.HandleFunc("/health", app.handleHealth).Methods("GET")
 
 	app.server = &http.Server{
 		Addr:    fmt.Sprintf("%s:%d", cfg.BindAddress, cfg.BindPort),
