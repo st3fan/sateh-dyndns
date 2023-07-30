@@ -7,6 +7,6 @@ WORKDIR /usr/local/src/sateh-dyndns
 COPY . .
 RUN CGO_ENABLED=0 go build -v
 
-FROM scratch
+FROM alpine:3.18
 COPY --from=build /usr/local/src/sateh-dyndns/sateh-dyndns /usr/local/bin/sateh-dyndns
 ENTRYPOINT ["/usr/local/bin/sateh-dyndns"]
