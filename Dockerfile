@@ -8,5 +8,5 @@ COPY . .
 RUN CGO_ENABLED=0 go build -v
 
 FROM scratch
-COPY --from=build /usr/local/src/sateh-dyndns /usr/local/bin/sateh-dyndns
+COPY --from=build /usr/local/src/sateh-dyndns/sateh-dyndns /usr/local/bin/sateh-dyndns
 ENTRYPOINT ["/usr/local/bin/sateh-dyndns"]
