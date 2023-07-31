@@ -19,6 +19,45 @@ import (
 	"github.com/pkg/errors"
 )
 
+//
+
+func parseRemoteAddr(address string) (string, error) {
+	addr, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return "", errors.Wrapf(err, "could not split remote address <%s>", address)
+	}
+
+	ip := net.ParseIP(addr)
+	if ip == nil {
+		return "", errors.Errorf("could not parse remote address <%s>", addr)
+	}
+
+	if ip.To4() == nil {
+		return "", errors.Errorf("remote address <%s> is not IPv4", addr)
+	}
+
+	return addr, err
+}
+
+func parseProxyProvidedAddr(r *http.Request) (string, error) {
+	if addr := r.Header.Get("X-Real-IP"); addr != "" {
+		ip := net.ParseIP(addr)
+		if ip == nil {
+			return "", errors.Errorf("could not parse proxy provided address <%s>", addr)
+		}
+
+		if ip.To4() == nil {
+			return "", errors.Errorf("proxy provided address <%s> is not IPv4", addr)
+		}
+
+		return addr, nil
+	}
+
+	return "", errors.New("no proxy provided address")
+}
+
+//
+
 type Updater interface {
 	UpdateRecord(ctx context.Context, address string) error
 }
@@ -45,7 +84,7 @@ func (u *CloudflareUpdater) UpdateRecord(ctx context.Context, address string) er
 		Name: u.recordName + "." + u.zoneName,
 	}
 
-	records, _, err := u.api.ListDNSRecords(context.Background(), cloudflare.ZoneIdentifier(zoneID), listRecordsParams)
+	records, _, err := u.api.ListDNSRecords(ctx, cloudflare.ZoneIdentifier(zoneID), listRecordsParams)
 	if err != nil {
 		return err
 	}
@@ -67,7 +106,7 @@ func (u *CloudflareUpdater) UpdateRecord(ctx context.Context, address string) er
 		Content: address,
 	}
 
-	if _, err := u.api.UpdateDNSRecord(context.Background(), cloudflare.ZoneIdentifier(zoneID), updateParams); err != nil {
+	if _, err := u.api.UpdateDNSRecord(ctx, cloudflare.ZoneIdentifier(zoneID), updateParams); err != nil {
 		log.Printf("could not update record: %s", err)
 	}
 
@@ -102,6 +141,7 @@ type configuration struct {
 	ZoneName        string `envconfig:"ZONE_NAME" required:"true"`
 	RecordName      string `envconfig:"RECORD_NAME" required:"true"`
 	AccessToken     string `envconfig:"ACCESS_TOKEN" required:"true"`
+	UseProxyHeaders bool   `envconfig:"USE_PROXY_HEADERS" default:"false"`
 }
 
 func newConfigurationFromEnvironment() (configuration, error) {
@@ -123,24 +163,6 @@ type application struct {
 	lastUpdatedAddress string
 }
 
-func parseRemoteAddr(address string) (string, error) {
-	addr, _, err := net.SplitHostPort(address)
-	if err != nil {
-		return "", errors.Wrapf(err, "could not split remote address <%s>", address)
-	}
-
-	ip := net.ParseIP(addr)
-	if ip == nil {
-		return "", errors.Errorf("could not parse remote address <%s>", addr)
-	}
-
-	if ip.To4() == nil {
-		return "", errors.Errorf("remote address <%s> is not IPv4", addr)
-	}
-
-	return addr, err
-}
-
 func parseAuthorization(authorization string) (string, error) {
 	fields := strings.Fields(authorization)
 	if len(fields) != 2 || fields[0] != "Bearer" {
@@ -149,10 +171,26 @@ func parseAuthorization(authorization string) (string, error) {
 	return fields[1], nil
 }
 
+func (app *application) getRemoteAddress(r *http.Request) (string, error) {
+	if app.cfg.UseProxyHeaders {
+		address, err := parseProxyProvidedAddr(r)
+		if err != nil {
+			return "", errors.Wrap(err, "could not parse proxy provided address")
+		}
+		return address, nil
+	} else {
+		address, err := parseRemoteAddr(r.RemoteAddr)
+		if err != nil {
+			return "", errors.Wrap(err, "could not parse remote address")
+		}
+		return address, nil
+	}
+}
+
 func (app *application) handleUpdate(w http.ResponseWriter, r *http.Request) {
-	address, err := parseRemoteAddr(r.RemoteAddr)
+	address, err := app.getRemoteAddress(r)
 	if err != nil {
-		log.Printf("Failed to parse remote address <%s>: %s", r.RemoteAddr, err)
+		log.Printf("Failed to get remote address: %s", err)
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}

@@ -13,6 +13,7 @@ On the server side, run it behind TLS. It doesn't have any state or database and
 * `ZONE_NAME` - The name of the zone, eg `example.com`
 * `RECORD_NAME` - The name of the record, eg `home` or `myserver.home`
 * `ACCESS_TOKEN` - Your secret token that protects this API
+* `USE_PROXY_HEADERS` - Whether to use a proxy provided `X-Real-IP` header (defaults to `false`)
 
 Keep the tokens safe. Ideally you put them in the Secrets Manager or Vault that your application hosting provider has. Specially keep the Cloudflare token secret because it is not possible to scope Clouddlare tokens to a single DNS record - it can be used to manage the whole zone.
 
